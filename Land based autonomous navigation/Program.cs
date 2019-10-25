@@ -18,9 +18,9 @@ using VRageMath;
 namespace IngameScript {
     partial class Program : MyGridProgram {
 
-        //##################################
-        //BEHAVIOUR VARIABLES
-        //##################################
+        //###################
+        //Behaviour variables
+        //###################
 
         float POWER_FACTOR = 20f;
         int PRECISION_FACTOR = 10;
@@ -29,43 +29,51 @@ namespace IngameScript {
         //NO MODIFICATIONS BEYOND THIS POINT
         //##################################
 
-        private List<IMyMotorSuspension> ruote;
-        private Dictionary<bool, List<IMyMotorSuspension>> direzionePropulsione;
-        private Dictionary<bool, List<IMyMotorSuspension>> direzioneSterzo;
+        //#################
+        //System structures
+        //#################
 
-        private List<IMyRemoteControl> controllori;
+        private List<IMyMotorSuspension> wheels;
+        private Dictionary<bool, List<IMyMotorSuspension>> propulsionDirection;
+        private Dictionary<bool, List<IMyMotorSuspension>> steeringDirection;
 
-        private IMyRemoteControl pilotaRemoto;
+        private List<IMyRemoteControl> controllers;
 
-        private IMyShipController riferimento;
+        private IMyRemoteControl remotePilot;
 
-        private List<IMyTextPanel> schermi;
+        private IMyShipController controlReference;
 
-        private class Autopilota {
-            public Vector3D? Obiettivo { get; set; }
-            public double Rotta { get; set; }
+        private List<IMyTextPanel> screens;
 
-            public Autopilota() {}
+        private class AutopilotStatus {
+            public Vector3D? Objective { get; set; }
+            public double Heading { get; set; }
+
+            public AutopilotStatus() {}
         }
 
-        private Autopilota autopilota;
+        private AutopilotStatus autopilotStatus;
 
         //private List<string> listaAllerta;
 
-        private MyCommandLine rigaDiComando = new MyCommandLine();
-        private Dictionary<string, Action> comandi = new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
+        private MyCommandLine commandLine = new MyCommandLine();
+        private Dictionary<string, Action> commandList = new Dictionary<string, Action>(StringComparer.OrdinalIgnoreCase);
 
-        private class StatoVeicolo {
-            public Vector3D Posizione { get; set; }
-            public Vector3D VelocitaRelativa { get; set; }
-            public MyShipVelocities VelocitaAssoluta { get; set; }
-            public Vector3D Orientamento { get; set; }
+        private class VehicleStatus {
+            public Vector3D Position { get; set; }
+            public Vector3D RelativeVelocity { get; set; }
+            public MyShipVelocities AbsoluteVelocity { get; set; }
+            public Vector3D Rotation { get; set; }
 
-            public StatoVeicolo() {}
+            public VehicleStatus() {}
 
         }
 
-        private StatoVeicolo stato;
+        private VehicleStatus vehicleStatus;
+
+        //###########
+        //Constructor
+        //###########
 
         public Program() {
             // The constructor, called only once every session and
@@ -79,122 +87,137 @@ namespace IngameScript {
             // here, which will allow your script to run itself without a 
             // timer block.
 
+            //Long update interval is used
             Runtime.UpdateFrequency = UpdateFrequency.Update100;
 
             //listaAllerta = new List<string>();
 
-            //Comandi
-            comandi["AddWaypoint"] = delegate {
-                if (rigaDiComando.Argument(1) != null) {
+            //####################
+            //Commands declaration
+            //####################
+
+            //Add a waypoint to the list
+            commandList["AddWaypoint"] = delegate {
+                if (commandLine.Argument(1) != null) {
                     double cmp1, cmp2, cmp3;
-                    bool successo1 = double.TryParse(rigaDiComando.Argument(1), out cmp1);
-                    bool successo2 = double.TryParse(rigaDiComando.Argument(2), out cmp2);
-                    bool successo3 = double.TryParse(rigaDiComando.Argument(3), out cmp3);
-                    if (successo1 && successo2 && successo3) {
-                        pilotaRemoto.AddWaypoint(new MyWaypointInfo("AutoWaypoint" ,new Vector3D(cmp1, cmp2, cmp3)));
-                        Echo("New destination set");
+                    bool success1 = double.TryParse(commandLine.Argument(1), out cmp1);
+                    bool success2 = double.TryParse(commandLine.Argument(2), out cmp2);
+                    bool success3 = double.TryParse(commandLine.Argument(3), out cmp3);
+                    if (success1 && success2 && success3) {
+                        remotePilot.AddWaypoint(new MyWaypointInfo("AutoWaypoint" ,new Vector3D(cmp1, cmp2, cmp3)));
+                        Echo("[CMD] New destination set");
                     } else {
                         //listaAllerta.Add("[CMD] Error on destination format");
+                        Echo("[CMD] Error on destination format");
                     }
                 }
             };
-            comandi["SpeedLimit"] = delegate {
-                if (rigaDiComando.Argument(1) != null) {
-                    int obiettivo;
-                    bool successo = int.TryParse(rigaDiComando.Argument(1), out obiettivo);
-                    if (successo) {
-                        pilotaRemoto.SpeedLimit = (float)obiettivo/3.6f;
-                        Echo("New speed limit set");
+
+            //Set speed limit
+            commandList["SpeedLimit"] = delegate {
+                if (commandLine.Argument(1) != null) {
+                    int target;
+                    bool success = int.TryParse(commandLine.Argument(1), out target);
+                    if (success) {
+                        remotePilot.SpeedLimit = (float)target/3.6f;
+                        Echo("[CMD] New speed limit set");
                     } else {
                         //listaAllerta.Add("[CMD] Error on speed limit format");
+                        Echo("[CMD] Error on speed limit format");
                     }
                 }
             };
-            comandi["Engage"] = delegate { pilotaRemoto.SetAutoPilotEnabled(true); };
-            comandi["Disengage"] = delegate { pilotaRemoto.SetAutoPilotEnabled(false); };
 
-            //Controllori
-            controllori = new List<IMyRemoteControl>();
-            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(controllori);
+            //Start and stop the autopilotStatus
+            commandList["Engage"] = delegate { remotePilot.SetAutoPilotEnabled(true); };
+            commandList["Disengage"] = delegate { remotePilot.SetAutoPilotEnabled(false); };
 
-            foreach (IMyRemoteControl c in controllori) {
+            //#####################
+            //System variables init
+            //#####################
+
+            //Controllers
+            controllers = new List<IMyRemoteControl>();
+            GridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(controllers);
+
+            foreach (IMyRemoteControl c in controllers) {
                 if (c != null) {
-                    pilotaRemoto = c;
-                    riferimento = pilotaRemoto;
+                    remotePilot = c;
+                    controlReference = remotePilot;
                 }
             }
 
-            //Schermi
-            schermi = new List<IMyTextPanel>();
-            GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(schermi);
+            //Screens
+            screens = new List<IMyTextPanel>();
+            GridTerminalSystem.GetBlocksOfType<IMyTextPanel>(screens);
 
-            foreach (IMyTextPanel t in schermi) {
+            foreach (IMyTextPanel t in screens) {
                 if (t != null) {
                     if (t.CustomName.ToLower().Contains("autopilot")) {
                         t.WritePublicTitle("Autopilot Status");
-                        t.WritePublicText("Autopilot compiled correctly\nWaiting for system start");
+                        t.WriteText("Autopilot compiled correctly\nWaiting for system start");
                     } else if (t.CustomName.ToLower().Contains("hud")) {
                         t.WritePublicTitle("HUD");
-                        t.WritePublicText("Autopilot compiled correctly\nWaiting for system start");
+                        t.WriteText("Autopilot compiled correctly\nWaiting for system start");
                     }
                 }
             }
 
-            //Ruote
-            ruote = new List<IMyMotorSuspension>();
-            GridTerminalSystem.GetBlocksOfType<IMyMotorSuspension>(ruote);
+            //Wheels
+            wheels = new List<IMyMotorSuspension>();
+            GridTerminalSystem.GetBlocksOfType<IMyMotorSuspension>(wheels);
 
-            direzioneSterzo = new Dictionary<bool, List<IMyMotorSuspension>>();
-            direzioneSterzo.Add(true, new List<IMyMotorSuspension>());
-            direzioneSterzo.Add(false, new List<IMyMotorSuspension>());
+            steeringDirection = new Dictionary<bool, List<IMyMotorSuspension>>();
+            steeringDirection.Add(true, new List<IMyMotorSuspension>());
+            steeringDirection.Add(false, new List<IMyMotorSuspension>());
 
-            Vector3D centroPropulsione = new Vector3D();
-            foreach (IMyMotorSuspension w in ruote) {
+            Vector3D propulsionCenter = new Vector3D();
+            foreach (IMyMotorSuspension w in wheels) {
                 if (w != null) {
-                    centroPropulsione += w.GetPosition();
+                    propulsionCenter += w.GetPosition();
                 }
             }
-            centroPropulsione /= ruote.Count;
+            propulsionCenter /= wheels.Count;
 
-            foreach (IMyMotorSuspension w in ruote) {
+            foreach (IMyMotorSuspension w in wheels) {
                 if (w != null) {
-                    Vector3D relPos = Vector3D.TransformNormal(w.GetPosition() - centroPropulsione, MatrixD.Transpose(riferimento.WorldMatrix));
+                    Vector3D relPos = Vector3D.TransformNormal(w.GetPosition() - propulsionCenter, MatrixD.Transpose(controlReference.WorldMatrix));
                     if (relPos.Z <= 0) {
-                        direzioneSterzo[true].Add(w);
+                        steeringDirection[true].Add(w);
                     } else {
-                        direzioneSterzo[false].Add(w);
+                        steeringDirection[false].Add(w);
                     }
                 }
             }
 
-            direzionePropulsione = new Dictionary<bool, List<IMyMotorSuspension>>();
-            direzionePropulsione.Add(true, new List<IMyMotorSuspension>());
-            direzionePropulsione.Add(false, new List<IMyMotorSuspension>());
+            propulsionDirection = new Dictionary<bool, List<IMyMotorSuspension>>();
+            propulsionDirection.Add(true, new List<IMyMotorSuspension>());
+            propulsionDirection.Add(false, new List<IMyMotorSuspension>());
 
-            foreach (IMyMotorSuspension w in ruote) {
+            foreach (IMyMotorSuspension w in wheels) {
                 if (w != null) {
-                    Vector3D relPos = Vector3D.TransformNormal(w.GetPosition() - centroPropulsione, MatrixD.Transpose(riferimento.WorldMatrix));
+                    Vector3D relPos = Vector3D.TransformNormal(w.GetPosition() - propulsionCenter, MatrixD.Transpose(controlReference.WorldMatrix));
                     if (relPos.X <= 0) {
-                        direzionePropulsione[true].Add(w);
+                        propulsionDirection[true].Add(w);
                     } else {
-                        direzionePropulsione[false].Add(w);
+                        propulsionDirection[false].Add(w);
                     }
                 }
             }
 
-            //Strutture
-            autopilota = new Autopilota();
-            pilotaRemoto.SpeedLimit = 22f;//80km/h
+            //Statuses
+            autopilotStatus = new AutopilotStatus();
+            remotePilot.SpeedLimit = 22f;//80km/h currently not in use
 
-            stato = new StatoVeicolo();
-            stato.Posizione = riferimento.GetPosition();
-            stato.VelocitaAssoluta = riferimento.GetShipVelocities();
-            stato.VelocitaRelativa = -Vector3D.TransformNormal((riferimento.GetShipVelocities().LinearVelocity), MatrixD.Transpose(riferimento.WorldMatrix));
+            vehicleStatus = new VehicleStatus();
+            vehicleStatus.Position = controlReference.GetPosition();
+            vehicleStatus.AbsoluteVelocity = controlReference.GetShipVelocities();
+            vehicleStatus.RelativeVelocity = -Vector3D.TransformNormal((controlReference.GetShipVelocities().LinearVelocity), MatrixD.Transpose(controlReference.WorldMatrix));
 
-            RilasciaRuote();
+            ReleaseWheels();
 
-            //listaAllerta.Add("[SYS] Autopilot booted up correctly");
-            Echo("Autopilot booted up correctly");
+            //listaAllerta.Add("[SYS] AutopilotStatus booted up correctly");
+            Echo("[SYS] Autopilot booted up correctly");
         }
 
         public void Save() {
@@ -204,15 +227,18 @@ namespace IngameScript {
             // 
             // This method is optional and can be removed if not
             // needed.
-
         }
 
-        //Schermi
+        //#######
+        //Screens
+        //#######
+
+        //HUD screen
         public string DisplayHUD() {
             string ret = "";
-            int velZ = (int)Math.Round(stato.VelocitaRelativa.Z * 3.6);
-            int velY = (int)Math.Round(stato.VelocitaRelativa.Y * 3.6);
-            int velX = (int)Math.Round(stato.VelocitaRelativa.X * 3.6);
+            int velZ = (int)Math.Round(vehicleStatus.RelativeVelocity.Z * 3.6);
+            int velY = (int)Math.Round(vehicleStatus.RelativeVelocity.Y * 3.6);
+            int velX = (int)Math.Round(vehicleStatus.RelativeVelocity.X * 3.6);
 
             ret += "Speed: " + velZ.ToString() + " km/h";
 
@@ -225,7 +251,7 @@ namespace IngameScript {
             }
 
             ret += "\nAutopilot: ";
-            if (pilotaRemoto.IsAutoPilotEnabled) {
+            if (remotePilot.IsAutoPilotEnabled) {
                 ret += "Enabled";
             } else {
                 ret += "Disabled";
@@ -234,15 +260,16 @@ namespace IngameScript {
             return ret;
         }
 
-        public string DisplayAutopilota() {
+        //Status screen
+        public string DisplayAutopilotInfo() {
             string ret = "Autopilot Status\n";
 
-            if (pilotaRemoto.IsAutoPilotEnabled) {
+            if (remotePilot.IsAutoPilotEnabled) {
                 ret += "\nAutopilot enabled\n";
 
-                if (Math.Abs(stato.VelocitaRelativa.Z - pilotaRemoto.SpeedLimit) > 2) {
+                if (Math.Abs(vehicleStatus.RelativeVelocity.Z - remotePilot.SpeedLimit) > 2) {
                     ret += "\nAdjusting Speed";
-                } else if (Math.Abs(autopilota.Rotta) > 0.2) {
+                } else if (Math.Abs(autopilotStatus.Heading) > 0.2) {
                     ret += "\nAdjusting Course";
                 } else {
                     ret += "\nOn Cruise";
@@ -251,13 +278,13 @@ namespace IngameScript {
                 ret += "\n";
 
                 ret += "\nDistance to waypoint: ";
-                ret += Math.Round((autopilota.Obiettivo.GetValueOrDefault() - stato.Posizione).Length()).ToString() + " m";
+                ret += Math.Round((autopilotStatus.Objective.GetValueOrDefault() - vehicleStatus.Position).Length()).ToString() + " m";
 
                 ret += "\nCurrent speed: ";
-                ret += Math.Round(stato.VelocitaRelativa.Z * 3.6).ToString() + " km/h";
+                ret += Math.Round(vehicleStatus.RelativeVelocity.Z * 3.6).ToString() + " km/h";
 
                 ret += "\nETA: ";
-                ret += Math.Round((autopilota.Obiettivo.GetValueOrDefault() - stato.Posizione).Length() / stato.VelocitaRelativa.Z).ToString() + " s";
+                ret += Math.Round((autopilotStatus.Objective.GetValueOrDefault() - vehicleStatus.Position).Length() / vehicleStatus.RelativeVelocity.Z).ToString() + " s";
 
                 ret += "\n";
 
@@ -265,74 +292,74 @@ namespace IngameScript {
             } else {
                 ret += "\nAutopilot disabled";
             }
-
             return ret;
         }
 
-        //Navigazione
-        public void Crociera(float velocita) {
-            //Calcola potenza
-            float potenza = (velocita - ((float)stato.VelocitaRelativa.Z)) / POWER_FACTOR;
+        //##########
+        //Navigation
+        //##########
 
-            //Normalizza in -1:1 range
-            if (potenza > 1) potenza = 1;
-            else if (potenza < -1) potenza = -1;
+        // Release wheel control
+        public void Cruise(float speed) {
+            //Power calculation
+            float power = (speed - ((float)vehicleStatus.RelativeVelocity.Z)) / POWER_FACTOR;
 
-            //Muovi ruote
-            foreach (IMyMotorSuspension w in direzionePropulsione[true]) {
-                w.SetValue("Propulsion override", potenza);
-            }
+            //Normalize in in -1:1 range
+            if (power > 1) power = 1;
+            else if (power < -1) power = -1;
 
-            foreach (IMyMotorSuspension w in direzionePropulsione[false]) {
-                w.SetValue("Propulsion override", -potenza);
-            }
+            //Move wheels
+            foreach (IMyMotorSuspension w in propulsionDirection[true]){w.SetValue("Propulsion override", power);}
+            foreach (IMyMotorSuspension w in propulsionDirection[false]){w.SetValue("Propulsion override", -power);}
         }
 
-        public void Direzione(double obiettivo) {
-            //Calcola Sterzo
-            float sterzo = (float)(obiettivo);
+        //Stering calculations
+        public void SteeringDirection(double target) {
+            //Steering calculation
+            float steering = (float)(target);
 
-            //Normalizza in -1:1 range
-            if (sterzo > 1) sterzo = 1;
-            else if (sterzo < -1) sterzo = -1;
+            //Normalize in -1:1 range
+            if (steering > 1) steering = 1;
+            else if (steering < -1) steering = -1;
 
-            //Muovi ruote
-            foreach (IMyMotorSuspension w in direzioneSterzo[true]) {
-                w.SetValue("Steer override", sterzo);
-            }
-
-            foreach (IMyMotorSuspension w in direzioneSterzo[false]) {
-                w.SetValue("Steer override", -sterzo);
-            }
+            //Move wheels
+            foreach (IMyMotorSuspension w in steeringDirection[true]){w.SetValue("Steer override", steering);}
+            foreach (IMyMotorSuspension w in steeringDirection[false]){w.SetValue("Steer override", -steering);}
         }
 
-        public void RilasciaRuote() {
-            foreach (IMyMotorSuspension w in ruote) {
+        //Release wheel control
+        public void ReleaseWheels() {
+            foreach (IMyMotorSuspension w in wheels) {
                 w.SetValue("Propulsion override", 0.0f);
                 w.SetValue("Steer override", 0.0f);
             }
         }
 
-        //Funzione principale autopilota
-        public void DoAutopilota() {
-            if (autopilota.Obiettivo != null) {
+        //#######################
+        //Autopilot main function
+        //#######################
+        public void DoAutopilot() {
+            if (autopilotStatus.Objective != null) {
 
-                Crociera(pilotaRemoto.SpeedLimit);
+                Cruise(remotePilot.SpeedLimit);
                 
-                Vector3D obiettivoRelativo = Vector3D.TransformNormal(stato.Posizione - autopilota.Obiettivo.GetValueOrDefault(), MatrixD.Transpose(riferimento.WorldMatrix));
+                Vector3D relativeTarget = Vector3D.TransformNormal(vehicleStatus.Position - autopilotStatus.Objective.GetValueOrDefault(), MatrixD.Transpose(controlReference.WorldMatrix));
 
                 //Calcola Sterzo
-                autopilota.Rotta = (double)(-Math.Atan2(obiettivoRelativo.X, obiettivoRelativo.Z));
+                autopilotStatus.Heading = (double)(-Math.Atan2(relativeTarget.X, relativeTarget.Z));
 
-                Direzione(autopilota.Rotta);
+                SteeringDirection(autopilotStatus.Heading);
 
-                Echo("DIST: " + Math.Sqrt(Math.Pow(obiettivoRelativo.X, 2) + Math.Pow(obiettivoRelativo.Z, 2)) + " - " + PRECISION_FACTOR);
-                if (Math.Sqrt(Math.Pow(obiettivoRelativo.X,2) + Math.Pow(obiettivoRelativo.Z, 2)) < PRECISION_FACTOR) {
-                    autopilota.Obiettivo = null;
+                Echo("DIST: " + Math.Sqrt(Math.Pow(relativeTarget.X, 2) + Math.Pow(relativeTarget.Z, 2)) + " - " + PRECISION_FACTOR);
+                if (Math.Sqrt(Math.Pow(relativeTarget.X,2) + Math.Pow(relativeTarget.Z, 2)) < PRECISION_FACTOR) {
+                    //Destination has been reached
+                    autopilotStatus.Objective = null;
                     //listaAllerta.Add("[SYS] AP destination reached");
+                    Echo("[SYS] AP destination reached");
                 }
             } else {
                 //listaAllerta.Add("[SYS] AP error: no destination set");
+                Echo("[SYS] AP error: no destination set");
             }
         }
 
@@ -347,71 +374,74 @@ namespace IngameScript {
             // The method itself is required, but the arguments above
             // can be removed if not needed.
 
-            //Parse comandi
-            if (rigaDiComando.TryParse(argument)) {
-                Action azioneComando;
+            //Parse remote or commandline commands
+            if (commandLine.TryParse(argument)) {
+                Action commandAction;
 
-                var comando = rigaDiComando.Argument(0);
-                if (comando == null) {
-                    Echo("No command specified");
-                } else if (comandi.TryGetValue(comando, out azioneComando)) {
-                    azioneComando();
+                var command = commandLine.Argument(0);
+                if (command == null) {
+                    Echo("[CMD] No command specified");
+                } else if (commandList.TryGetValue(command, out commandAction)) {
+                    commandAction();
                 } else {
-                    Echo($"Unknown command {comando}");
+                    Echo($"[CMD] Unknown command {command}");
                 }
             }
 
-            //Update stato
-            stato.Posizione = riferimento.GetPosition();
-            stato.VelocitaAssoluta = riferimento.GetShipVelocities();
-            stato.VelocitaRelativa = -Vector3D.TransformNormal((riferimento.GetShipVelocities().LinearVelocity), MatrixD.Transpose(riferimento.WorldMatrix));
+            //Update vehicleStatus
+            vehicleStatus.Position = controlReference.GetPosition();
+            vehicleStatus.AbsoluteVelocity = controlReference.GetShipVelocities();
+            vehicleStatus.RelativeVelocity = -Vector3D.TransformNormal((controlReference.GetShipVelocities().LinearVelocity), MatrixD.Transpose(controlReference.WorldMatrix));
 
-            //Schermi
-            foreach (IMyTextPanel t in schermi) {
+            //Screens
+            foreach (IMyTextPanel t in screens) {
                 if (t != null) {
-                    if (t.CustomName.ToLower().Contains("autopilot")) {
-                        t.WritePublicText(DisplayAutopilota());
+                    if (t.CustomName.ToLower().Contains("autopilotStatus")) {
+                        t.WriteText(DisplayAutopilotInfo());
                     } else if (t.CustomName.ToLower().Contains("hud")) {
-                        t.WritePublicText(DisplayHUD());
+                        t.WriteText(DisplayHUD());
                     }
                 }
             }
 
-            //Autopilota
-            if (pilotaRemoto.IsAutoPilotEnabled) {
-                DoAutopilota();
+            //Autopilot
+            if (remotePilot.IsAutoPilotEnabled) {
+                DoAutopilot();
 
-                if (autopilota.Obiettivo == null) {
-                    List<MyWaypointInfo> rotta = new List<MyWaypointInfo>();
-                    pilotaRemoto.GetWaypointInfo(rotta);
+                if (autopilotStatus.Objective == null) {
+                    List<MyWaypointInfo> route = new List<MyWaypointInfo>();
+                    remotePilot.GetWaypointInfo(route);
 
-                    if (rotta.Count > 0) {
-                        MyWaypointInfo prossimo = rotta.First();
-                        rotta.RemoveAt(0);
+                    if (route.Count > 0) {
+                        MyWaypointInfo nextWaypoint = route.First();
+                        route.RemoveAt(0);
 
-                        if (pilotaRemoto.FlightMode == FlightMode.OneWay) {
-                            pilotaRemoto.ClearWaypoints();
-                            foreach (MyWaypointInfo wp in rotta) {
-                                pilotaRemoto.AddWaypoint(wp);
+                        if (remotePilot.FlightMode == FlightMode.OneWay) {
+                            //OneWay mode
+                            remotePilot.ClearWaypoints();
+                            foreach (MyWaypointInfo wp in route) {
+                                remotePilot.AddWaypoint(wp);
                             }
-                        } else if (pilotaRemoto.FlightMode == FlightMode.Circle) {
-                            rotta.Add(prossimo);
-                            pilotaRemoto.ClearWaypoints();
-                            foreach (MyWaypointInfo wp in rotta) {
-                                pilotaRemoto.AddWaypoint(wp);
+                        } else if (remotePilot.FlightMode == FlightMode.Circle) {
+                            //Circle mode
+                            route.Add(nextWaypoint);
+                            remotePilot.ClearWaypoints();
+                            foreach (MyWaypointInfo wp in route) {
+                                remotePilot.AddWaypoint(wp);
                             }
-                        } else { //Patrol
+                        } else {
+                            //Patrol
                             //Not implemented
-                            pilotaRemoto.SetAutoPilotEnabled(false);
+                            remotePilot.SetAutoPilotEnabled(false);
                             Echo("[AP] Patrol not implemented yet!");
                             return;
                         }
 
-                        autopilota.Obiettivo = prossimo.Coords;
-                        pilotaRemoto.SetAutoPilotEnabled(true);
+                        autopilotStatus.Objective = nextWaypoint.Coords;
+                        remotePilot.SetAutoPilotEnabled(true);
                     } else {
                         //No waypoints in list
-                        pilotaRemoto.SetAutoPilotEnabled(false);
+                        remotePilot.SetAutoPilotEnabled(false);
                     }
                     //Speed up clock
                     Runtime.UpdateFrequency = UpdateFrequency.Update10;
@@ -421,8 +451,8 @@ namespace IngameScript {
                 //Autopilot turning off
                 //Slow down clock for better CPU usage
                 Runtime.UpdateFrequency = UpdateFrequency.Update100;
-                autopilota.Obiettivo = null;
-                RilasciaRuote();
+                autopilotStatus.Objective = null;
+                ReleaseWheels();
                 Echo("[AP] Autopilot Disengaged");
             }
         }

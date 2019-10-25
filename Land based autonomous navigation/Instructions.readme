@@ -1,5 +1,35 @@
 ﻿R e a d m e
 -----------
 
-In this file you can include any instructions or other comments you want to have injected onto the 
-top of your final script. You can safely delete this file if you do not want any such comments.
+LAND AUTOPILOT SCRIPT
+
+NEEDED PARTS
+- A remote control
+- Wheels
+
+OPTIONAL PARTS
+- One or more displays with "hud" anywhere in the name
+- One or more displays with "autopilot" anywhere in the name
+- An antenna to recieve remote string commands
+
+USAGE
+- Put the coordinates in the remote control
+- Select an autopilot mode (note, "Patrol" not yet supported)
+- IMPORTANT: select an appropriate speed limit
+- Switch the remote control's autopilot to ON
+
+AVAILABLE REMOTE STRING COMMANDS FOR THE SCRIPT
+- AddWaypoint x y z // Adds a waypoint to the waypoint list
+- SpeedLimit x // sets the speed limit to x KM/H
+- Engage // Engages the autopilot (remote controller switch)
+- Disengage // Disengages the autopilot (remote controller switch)
+
+NOTES
+For now the autopilot will drive a rover to the waypoints you have set
+Please keep in mind that in order to avoid damage, you need to manually set a safe path and a safe cruising speed
+- Collision avoidance in NOT implemented yet!
+- Terrain detection and avoidance is NOT implemented yet!
+
+CREDIT
+This script was made by Marcvs101
+A huge thank you goes to Malware for the MDK-SE and its documentation
