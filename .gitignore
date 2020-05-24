@@ -332,3 +332,6 @@ ASALocalRun/
 # Space engineers
 MDK/
 *.png
+
+# Zip files
+*.zip
