@@ -200,7 +200,7 @@ namespace IngameScript {
 
             // Statuses
             autopilotStatus = new AutopilotStatus();
-            remotePilot.SpeedLimit = 11f;//40km/h currently not in use
+            //remotePilot.SpeedLimit = 11f;//40km/h currently not in use
 
             vehicleStatus = new VehicleStatus();
             vehicleStatus.Position = controlReference.GetPosition();
@@ -332,33 +332,6 @@ namespace IngameScript {
             }
         }
 
-        // Autopilot main function
-        public void DoAutopilot() {
-            if (autopilotStatus.Objective != null) {
-
-                // Apply Power
-                Cruise(remotePilot.SpeedLimit);
-                
-                Vector3D relativeTarget = Vector3D.TransformNormal(vehicleStatus.Position - autopilotStatus.Objective.GetValueOrDefault(), MatrixD.Transpose(controlReference.WorldMatrix));
-
-                // Steering calculations
-                autopilotStatus.Heading = (double)(-Math.Atan2(relativeTarget.X, relativeTarget.Z));
-
-                SteeringDirection(autopilotStatus.Heading);
-
-                Echo("DIST: " + Math.Sqrt(Math.Pow(relativeTarget.X, 2) + Math.Pow(relativeTarget.Z, 2)) + " - " + PRECISION_FACTOR);
-                if (Math.Sqrt(Math.Pow(relativeTarget.X,2) + Math.Pow(relativeTarget.Z, 2)) < PRECISION_FACTOR) {
-                    // Destination has been reached
-                    autopilotStatus.Objective = null;
-                    //listaAllerta.Add("[SYS] AP destination reached");
-                    Echo("[SYS] AP destination reached");
-                }
-            } else {
-                //listaAllerta.Add("[SYS] AP error: no destination set");
-                Echo("[SYS] AP error: no destination set");
-            }
-        }
-
         public void Main(string argument, UpdateType updateSource) {
             // The main entry point of the script, invoked every time
             // one of the programmable block's Run actions are invoked,
@@ -402,45 +375,74 @@ namespace IngameScript {
 
             // Autopilot
             if (remotePilot.IsAutoPilotEnabled) {
-                DoAutopilot();
-
+                // If no objective, select one
                 if (autopilotStatus.Objective == null) {
                     List<MyWaypointInfo> route = new List<MyWaypointInfo>();
                     remotePilot.GetWaypointInfo(route);
 
                     if (route.Count > 0) {
                         MyWaypointInfo nextWaypoint = route.First();
-                        route.RemoveAt(0);
-
-                        if (remotePilot.FlightMode == FlightMode.OneWay) {
-                            // OneWay mode
-                            remotePilot.ClearWaypoints();
-                            foreach (MyWaypointInfo wp in route) {
-                                remotePilot.AddWaypoint(wp);
-                            }
-                        } else if (remotePilot.FlightMode == FlightMode.Circle) {
-                            // Circle mode
-                            route.Add(nextWaypoint);
-                            remotePilot.ClearWaypoints();
-                            foreach (MyWaypointInfo wp in route) {
-                                remotePilot.AddWaypoint(wp);
-                            }
-                        } else {
-                            // Patrol
-                            // Not implemented
-                            remotePilot.SetAutoPilotEnabled(false);
-                            Echo("[AP] Patrol not implemented yet!");
-                            return;
-                        }
-
                         autopilotStatus.Objective = nextWaypoint.Coords;
-                        remotePilot.SetAutoPilotEnabled(true);
+                        remotePilot.HandBrake = false;
                     } else {
                         // No waypoints in list
                         remotePilot.SetAutoPilotEnabled(false);
                     }
                     // Speed up clock
                     Runtime.UpdateFrequency = UpdateFrequency.Update10;
+                }
+                else {
+                    // Objective is selected, navigate to point
+                    // Apply Power
+                    Cruise(remotePilot.SpeedLimit);
+
+                    // Steering calculations
+                    Vector3D relativeTarget = Vector3D.TransformNormal(vehicleStatus.Position - autopilotStatus.Objective.GetValueOrDefault(), MatrixD.Transpose(controlReference.WorldMatrix));
+                    autopilotStatus.Heading = (double)(-Math.Atan2(relativeTarget.X, relativeTarget.Z));
+                    SteeringDirection(autopilotStatus.Heading);
+
+                    // Distance Calculation
+                    Echo("DIST: " + Math.Sqrt(Math.Pow(relativeTarget.X, 2) + Math.Pow(relativeTarget.Z, 2)) + " - " + PRECISION_FACTOR);
+                    if (Math.Sqrt(Math.Pow(relativeTarget.X, 2) + Math.Pow(relativeTarget.Z, 2)) < PRECISION_FACTOR) {
+                        // Destination has been reached
+                        autopilotStatus.Objective = null;
+                        //Update waypoint list
+                        List<MyWaypointInfo> route = new List<MyWaypointInfo>();
+                        remotePilot.GetWaypointInfo(route);
+
+                        if (route.Count > 0) {
+                            MyWaypointInfo nextWaypoint = route.First();
+                            route.RemoveAt(0);
+
+                            if (remotePilot.FlightMode == FlightMode.OneWay) {
+                                // OneWay mode
+                                remotePilot.ClearWaypoints();
+                                foreach (MyWaypointInfo wp in route) {
+                                    remotePilot.AddWaypoint(wp);
+                                }
+                            } else if (remotePilot.FlightMode == FlightMode.Circle) {
+                                // Circle mode
+                                route.Add(nextWaypoint);
+                                remotePilot.ClearWaypoints();
+                                foreach (MyWaypointInfo wp in route) {
+                                    remotePilot.AddWaypoint(wp);
+                                }
+                            } else {
+                                // Patrol
+                                // Not implemented
+                                remotePilot.SetAutoPilotEnabled(false);
+                                Echo("[AP] Patrol not implemented yet!");
+                                return;
+                            }
+
+                            //Need to reset the autopilot status to true after clearing the queue
+                            remotePilot.SetAutoPilotEnabled(true);
+
+                        }
+
+                        //listaAllerta.Add("[SYS] AP destination reached");
+                        Echo("[SYS] AP destination reached");
+                    }
                 }
             
             } else if (Runtime.UpdateFrequency != UpdateFrequency.Update100) {
@@ -449,6 +451,7 @@ namespace IngameScript {
                 Runtime.UpdateFrequency = UpdateFrequency.Update100;
                 autopilotStatus.Objective = null;
                 ReleaseWheels();
+                //remotePilot.HandBrake = true;
                 Echo("[AP] Autopilot Disengaged");
             }
         }
