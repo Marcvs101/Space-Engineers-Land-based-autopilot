@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{1B398F00-5FA7-4F92-B014-10B143497C8C}</ProjectGuid>
+    <ProjectGuid>{C6B59DF1-0E79-42CA-9E55-A3AD5414A403}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>IngameScript</RootNamespace>
     <AssemblyName>Land based autonomous navigation</AssemblyName>
