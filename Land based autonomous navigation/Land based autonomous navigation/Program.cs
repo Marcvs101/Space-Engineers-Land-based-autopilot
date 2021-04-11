@@ -73,17 +73,6 @@ namespace IngameScript {
 
         // Constructor
         public Program() {
-            // The constructor, called only once every session and
-            // always before any other method is called. Use it to
-            // initialize your script. 
-            //     
-            // The constructor is optional and can be removed if not
-            // needed.
-            // 
-            // It's recommended to set RuntimeInfo.UpdateFrequency 
-            // here, which will allow your script to run itself without a 
-            // timer block.
-
             // Long update interval is used
             Runtime.UpdateFrequency = UpdateFrequency.Update100;
 
