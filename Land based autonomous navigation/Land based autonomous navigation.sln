@@ -1,22 +1,28 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
-VisualStudioVersion = 16.0.31019.35
+VisualStudioVersion = 16.0.31105.61
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Land based autonomous navigation", "Land based autonomous navigation\Land based autonomous navigation.csproj", "{C6B59DF1-0E79-42CA-9E55-A3AD5414A403}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Land based autonomous navigation", "Land based autonomous navigation\Land based autonomous navigation.csproj", "{6C12414B-4E6B-4BDD-BB8F-5F106BFE4E31}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "UIManager", "..\..\UIManager\UIManager\UIManager.shproj", "{9FEC4F47-8597-437B-9DBA-16C9D4519B62}"
 EndProject
 Global
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		..\..\UIManager\UIManager\UIManager.projitems*{6c12414b-4e6b-4bdd-bb8f-5f106bfe4e31}*SharedItemsImports = 4
+		..\..\UIManager\UIManager\UIManager.projitems*{9fec4f47-8597-437b-9dba-16c9d4519b62}*SharedItemsImports = 13
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{C6B59DF1-0E79-42CA-9E55-A3AD5414A403}.Debug|x64.ActiveCfg = Debug|x64
-		{C6B59DF1-0E79-42CA-9E55-A3AD5414A403}.Debug|x64.Build.0 = Debug|x64
+		{6C12414B-4E6B-4BDD-BB8F-5F106BFE4E31}.Debug|x64.ActiveCfg = Debug|x64
+		{6C12414B-4E6B-4BDD-BB8F-5F106BFE4E31}.Debug|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {46A985E8-A62E-4545-946D-EA5E6628657B}
+		SolutionGuid = {0CFA314B-EC4D-4C3D-B2E1-C44B4AB36133}
 	EndGlobalSection
 EndGlobal
