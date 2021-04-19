@@ -28,7 +28,7 @@ namespace IngameScript
             private Dictionary<bool, List<IMyMotorSuspension>> steeringDirection = new Dictionary<bool, List<IMyMotorSuspension>>();
             private List<IMyMotorSuspension> wheels = new List<IMyMotorSuspension>();
 
-            public WheelController(IMyGridTerminalSystem myGridTerminalSystem)
+            public WheelController(IMyGridTerminalSystem myGridTerminalSystem, IMyShipController controlReference)
             {
                 steeringDirection.Add(true, new List<IMyMotorSuspension>());
                 steeringDirection.Add(false, new List<IMyMotorSuspension>());
@@ -71,6 +71,7 @@ namespace IngameScript
                         }
                     }
                 }
+                ReleaseWheels();
             }
 
             public float SteeringDirection(double target, float speedLimit, double z)

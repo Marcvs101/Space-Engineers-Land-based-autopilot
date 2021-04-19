@@ -29,6 +29,9 @@ namespace IngameScript
             public float Power { get; set; }
             public float Steering { get; set; }
 
+            float powerFactor;
+            int precisionFactor;
+
             public Vector3D Position { get; set; }
             public Vector3D RelativeVelocity { get; set; }
             public MyShipVelocities AbsoluteVelocity { get; set; }
@@ -37,9 +40,10 @@ namespace IngameScript
             public IMyRemoteControl remotePilot;
             private IMyShipController controlReference;
             private WheelController wheelController;
+            private UIManager uIManager;
 
             // Constructor
-            public AutoPilotManager(IMyGridTerminalSystem myGridTerminalSystem, WheelController wheelController) {
+            public AutoPilotManager(IMyGridTerminalSystem myGridTerminalSystem, UIManager uIManager, float powerFactor, int precisionFactor) {
                 List<IMyRemoteControl> controllers = new List<IMyRemoteControl>();
                 myGridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(controllers);
 
@@ -51,7 +55,10 @@ namespace IngameScript
                 Position = controlReference.GetPosition();
                 AbsoluteVelocity = controlReference.GetShipVelocities();
                 RelativeVelocity = -Vector3D.TransformNormal((controlReference.GetShipVelocities().LinearVelocity), MatrixD.Transpose(controlReference.WorldMatrix));
-                this.wheelController = wheelController;
+                wheelController = new WheelController(myGridTerminalSystem, controlReference);
+                this.powerFactor = powerFactor;
+                this.precisionFactor = precisionFactor;
+                this.uIManager = uIManager;
             }
 
             //--------------- Callback commands ---------------
@@ -102,7 +109,55 @@ namespace IngameScript
 
             //--------------- Pilot management ---------------
 
-            public void Cruise(float powerFactor)
+            public bool onUpdate()
+            {
+                if (remotePilot.IsAutoPilotEnabled)
+                {
+                    this.Objective = getCurrentObjective();
+                    if (this.Objective != null)
+                    {
+                        UpdatePosition();
+                        remotePilot.HandBrake = false;
+                        // TODO check collision in front of.
+                        Vector3D relativeTarget = Steer(); // Steer
+                        Cruise(); // Apply Power  // TODO slow down when close to the target.
+                        if(CheckDestination(relativeTarget))
+                        {
+                            bool hasAny = RemoveReachedObjective();
+                            if(!hasAny)
+                            {
+                                uIManager.printOnScreens("service", "[SYS] AP destination reached");
+                                remotePilot.HandBrake = true;
+                                wheelController.ReleaseWheels();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // No waypoints in list
+                        remotePilot.SetAutoPilotEnabled(false);
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            private bool CheckDestination(Vector3D relativeTarget)
+            {
+                double destination = Math.Sqrt(Math.Pow(relativeTarget.X, 2) + Math.Pow(relativeTarget.Z, 2));
+                uIManager.printOnScreens("service", "DIST: " + destination + " - " + precisionFactor);
+                return destination < precisionFactor;
+                // TODO support aligment like SAMv2 stance
+            }
+
+            private Vector3D Steer()
+            {
+                Vector3D relativeTarget = Vector3D.TransformNormal(this.Position - this.Objective.GetValueOrDefault(), MatrixD.Transpose(controlReference.WorldMatrix));
+                this.Heading = (double)(-Math.Atan2(relativeTarget.X, relativeTarget.Z));
+                this.Steering = wheelController.SteeringDirection(this.Heading, remotePilot.SpeedLimit, this.RelativeVelocity.Z);
+                return relativeTarget;
+            }
+            private void Cruise()
             {
                 float speed = remotePilot.SpeedLimit;
                 // Slow down on turns
@@ -118,11 +173,57 @@ namespace IngameScript
                 wheelController.moveWheels(this.Power);
             }
 
-            public void onUpdate()
+            private void UpdatePosition()
             {
-                Position = controlReference.GetPosition();
-                AbsoluteVelocity = controlReference.GetShipVelocities();
-                RelativeVelocity = -Vector3D.TransformNormal((controlReference.GetShipVelocities().LinearVelocity), MatrixD.Transpose(controlReference.WorldMatrix));
+                this.Position = controlReference.GetPosition();
+                this.AbsoluteVelocity = controlReference.GetShipVelocities();
+                this.RelativeVelocity = -Vector3D.TransformNormal((controlReference.GetShipVelocities().LinearVelocity), MatrixD.Transpose(controlReference.WorldMatrix));
+            }
+
+            private Vector3D? getCurrentObjective()
+            {
+                if(this.Objective == null)
+                {
+                    List<MyWaypointInfo> route = new List<MyWaypointInfo>();
+                    remotePilot.GetWaypointInfo(route);
+                    if (route.Count > 0)
+                    {
+                        MyWaypointInfo nextWaypoint = route.First();
+                        return nextWaypoint.Coords;
+                    }
+                }
+                return this.Objective;
+            }
+
+            private bool RemoveReachedObjective()
+            {
+                this.Objective = null;
+                List<MyWaypointInfo> route = new List<MyWaypointInfo>();
+                remotePilot.GetWaypointInfo(route);
+                if (route.Count > 0)
+                {
+                    MyWaypointInfo nextWaypoint = route.First();
+                    route.RemoveAt(0);
+                    remotePilot.ClearWaypoints();
+                    switch (remotePilot.FlightMode)
+                    {
+                        case FlightMode.OneWay:
+                            break;
+                        case FlightMode.Circle:
+                            route.Add(nextWaypoint);
+                            break;
+                        case FlightMode.Patrol: // behave as one way
+                            uIManager.printOnScreens("service", "[AP] Patrol not implemented yet!");
+                            break;
+                    }
+                    foreach (MyWaypointInfo wp in route)
+                    {
+                        remotePilot.AddWaypoint(wp);
+                    }
+                    //Need to reset the autopilot status to true after clearing the queue
+                    remotePilot.SetAutoPilotEnabled(true);
+                }
+                return route.Count > 0;
             }
 
             //--------------- Info ---------------
