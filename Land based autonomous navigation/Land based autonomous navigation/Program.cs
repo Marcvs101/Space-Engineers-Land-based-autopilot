@@ -26,6 +26,7 @@ namespace IngameScript
 
         float POWER_FACTOR = 20f;
         int PRECISION_FACTOR = 10;
+        int SCAN_DISTANCE = 50; // collision scan distance
 
         // ##################################
         // NO MODIFICATIONS BEYOND THIS POINT
@@ -52,7 +53,7 @@ namespace IngameScript
             uIManager.printOnScreens("autopilot", "Autopilot compiled correctly\nWaiting for system to start", "Autopilot Status");
             uIManager.printOnScreens("hud", "Autopilot compiled correctly\nWaiting for system to start", "HUD");
 
-            autopilotManager = new AutoPilotManager(GridTerminalSystem, uIManager, POWER_FACTOR, PRECISION_FACTOR);
+            autopilotManager = new AutoPilotManager(GridTerminalSystem, uIManager, POWER_FACTOR, PRECISION_FACTOR, SCAN_DISTANCE);
 
             uIManager.printOnScreens("service", "[SYS] Autopilot booted up correctly");
         }

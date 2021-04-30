@@ -11,6 +11,7 @@ OPTIONAL PARTS
 - One or more displays with "hud" anywhere in the name
 - One or more displays with "autopilot" anywhere in the name
 - An antenna to recieve remote string commands
+- Front camera for collision detection tagged with [RC] (should be placed and aligned properly)
 
 USAGE
 - Put the coordinates in the remote control
@@ -27,7 +28,6 @@ AVAILABLE REMOTE STRING COMMANDS FOR THE SCRIPT
 NOTES
 For now the autopilot will drive a rover to the waypoints you have set
 Please keep in mind that in order to avoid damage, you need to manually set a safe path and a safe cruising speed
-- Collision avoidance in NOT implemented yet!
 - Terrain detection and avoidance is NOT implemented yet!
 
 CREDIT
