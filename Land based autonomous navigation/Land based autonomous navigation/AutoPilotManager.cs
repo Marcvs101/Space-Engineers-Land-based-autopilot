@@ -25,17 +25,13 @@ namespace IngameScript
         public class AutoPilotManager
         {
             public Vector3D? Objective { get; set; }
-            public double Heading { get; set; }
-            public float Power { get; set; }
-            public float Steering { get; set; }
 
             float powerFactor;
             int precisionFactor;
 
             public Vector3D Position { get; set; }
             public Vector3D RelativeVelocity { get; set; }
-            public MyShipVelocities AbsoluteVelocity { get; set; }
-            public Vector3D Rotation { get; set; }
+            private Vector3D RelativeTarget { get; set; }
 
             public IMyRemoteControl remotePilot;
             private IMyShipController controlReference;
@@ -52,9 +48,6 @@ namespace IngameScript
                     remotePilot = c;
                     controlReference = remotePilot;
                 }
-                Position = controlReference.GetPosition();
-                AbsoluteVelocity = controlReference.GetShipVelocities();
-                RelativeVelocity = -Vector3D.TransformNormal((controlReference.GetShipVelocities().LinearVelocity), MatrixD.Transpose(controlReference.WorldMatrix));
                 wheelController = new WheelController(myGridTerminalSystem, controlReference);
                 this.powerFactor = powerFactor;
                 this.precisionFactor = precisionFactor;
@@ -116,12 +109,11 @@ namespace IngameScript
                     this.Objective = getCurrentObjective();
                     if (this.Objective != null)
                     {
-                        UpdatePosition();
+                        double destination = UpdatePosition();
                         remotePilot.HandBrake = false;
                         // TODO check collision in front of.
-                        Vector3D relativeTarget = Steer(); // Steer
-                        Cruise(); // Apply Power  // TODO slow down when close to the target.
-                        if(CheckDestination(relativeTarget))
+                        Cruise(destination); // Apply Power  
+                        if(destination < precisionFactor)
                         {
                             bool hasAny = RemoveReachedObjective();
                             if(!hasAny)
@@ -139,45 +131,38 @@ namespace IngameScript
                         return false;
                     }
                 }
+                else
+                {
+                    wheelController.ReleaseWheels();
+                }
                 return true;
             }
 
-            private bool CheckDestination(Vector3D relativeTarget)
-            {
-                double destination = Math.Sqrt(Math.Pow(relativeTarget.X, 2) + Math.Pow(relativeTarget.Z, 2));
-                uIManager.printOnScreens("service", "DIST: " + destination + " - " + precisionFactor);
-                return destination < precisionFactor;
-                // TODO support aligment like SAMv2 stance
-            }
-
-            private Vector3D Steer()
-            {
-                Vector3D relativeTarget = Vector3D.TransformNormal(this.Position - this.Objective.GetValueOrDefault(), MatrixD.Transpose(controlReference.WorldMatrix));
-                this.Heading = (double)(-Math.Atan2(relativeTarget.X, relativeTarget.Z));
-                this.Steering = wheelController.SteeringDirection(this.Heading, remotePilot.SpeedLimit, this.RelativeVelocity.Z);
-                return relativeTarget;
-            }
-            private void Cruise()
+            private void Cruise(double destination)
             {
                 float speed = remotePilot.SpeedLimit;
+
                 // Slow down on turns
-                if (Math.Abs(this.Steering) > .1f) speed = speed * ((1f - (Math.Abs(this.Steering)) * .9f) + .1f);
+                if (Math.Abs(wheelController.Steering) > .1f) speed = speed * ((1f - (Math.Abs(wheelController.Steering)) * .9f) + .1f);
+                // Slow down when close to the targed
+                if (destination < 50) speed = speed * 0.5f;
 
+                wheelController.SteeringDirection(RelativeTarget, RelativeVelocity, speed);
+
+                // TODO increase power when stuck! (and steer  wheels)
                 // Power calculation
-                this.Power = (speed - ((float)this.RelativeVelocity.Z)) / powerFactor;
-
-                // Normalize in in -1:1 range
-                if (this.Power > 1) this.Power = 1f;
-                else if (this.Power < -1) this.Power = -1f;
-
-                wheelController.moveWheels(this.Power);
+                wheelController.moveWheels(RelativeVelocity, speed, powerFactor);
             }
 
-            private void UpdatePosition()
+            private double UpdatePosition()
             {
                 this.Position = controlReference.GetPosition();
-                this.AbsoluteVelocity = controlReference.GetShipVelocities();
                 this.RelativeVelocity = -Vector3D.TransformNormal((controlReference.GetShipVelocities().LinearVelocity), MatrixD.Transpose(controlReference.WorldMatrix));
+                this.RelativeTarget = Vector3D.TransformNormal(this.Position - this.Objective.GetValueOrDefault(), MatrixD.Transpose(controlReference.WorldMatrix));
+                
+                double destination = Math.Sqrt(Math.Pow(RelativeTarget.X, 2) + Math.Pow(RelativeTarget.Z, 2));
+                uIManager.printOnScreens("service", "DIST: " + destination + " - " + precisionFactor);
+                return destination;
             }
 
             private Vector3D? getCurrentObjective()
@@ -240,7 +225,7 @@ namespace IngameScript
                     {
                         ret += "\nAdjusting Speed";
                     }
-                    else if (Math.Abs(this.Heading) > 0.2)
+                    else if (Math.Abs(wheelController.Heading) > 0.2)
                     {
                         ret += "\nAdjusting Course";
                     }

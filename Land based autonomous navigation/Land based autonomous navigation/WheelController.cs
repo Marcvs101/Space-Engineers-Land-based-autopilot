@@ -24,6 +24,10 @@ namespace IngameScript
     {
         public class WheelController
         {
+            public double Heading { get; set; }
+            public float Power { get; set; }
+            public float Steering { get; set; }
+
             private Dictionary<bool, List<IMyMotorSuspension>> propulsionDirection = new Dictionary<bool, List<IMyMotorSuspension>>();
             private Dictionary<bool, List<IMyMotorSuspension>> steeringDirection = new Dictionary<bool, List<IMyMotorSuspension>>();
             private List<IMyMotorSuspension> wheels = new List<IMyMotorSuspension>();
@@ -74,8 +78,11 @@ namespace IngameScript
                 ReleaseWheels();
             }
 
-            public float SteeringDirection(double target, float speedLimit, double z)
-            {
+            public void SteeringDirection(Vector3D relativeTarget, Vector3D relativeVelocity, float speedLimit)
+            {// TODO do not calculate steering on every cycle
+                this.Heading = (double)(-Math.Atan2(relativeTarget.X, relativeTarget.Z));
+                double target = this.Heading;
+
                 // Normalize in -1:1 range
                 if (target > 1) target = 1;
                 else if (target < -1) target = -1;
@@ -83,13 +90,13 @@ namespace IngameScript
                 float actualTarget = (float)target;
 
                 // No hardsteering at speed
-                if (Math.Abs(target) > .1) actualTarget = (float)(target / (((Math.Abs(z) / (double)speedLimit) * 5) * .9 + .1));
+                if (Math.Abs(target) > .1) actualTarget = (float)(target / (((Math.Abs(relativeVelocity.Z) / (double)speedLimit) * 5) * .9 + .1));
 
                 // Move wheels
                 foreach (IMyMotorSuspension w in steeringDirection[true]) { w.SetValue("Steer override", actualTarget); }
                 foreach (IMyMotorSuspension w in steeringDirection[false]) { w.SetValue("Steer override", -actualTarget); }
 
-                return (float)target; // return steering (to be set in autopilot)
+                this.Steering = (float)target; // return steering (to be set in autopilot)
             }
 
             public void ReleaseWheels()
@@ -101,10 +108,16 @@ namespace IngameScript
                 }
             }
 
-            public void moveWheels(float power)
+            public void moveWheels(Vector3D RelativeVelocity, float speed, float powerFactor)
             {
-                foreach (IMyMotorSuspension w in propulsionDirection[true]) { w.SetValue("Propulsion override", power); }
-                foreach (IMyMotorSuspension w in propulsionDirection[false]) { w.SetValue("Propulsion override", -power); }
+                this.Power = (speed - ((float)RelativeVelocity.Z)) / powerFactor;
+
+                // Normalize in in -1:1 range
+                if (this.Power > 1) this.Power = 1f;
+                else if (this.Power < -1) this.Power = -1f;
+
+                foreach (IMyMotorSuspension w in propulsionDirection[true]) { w.SetValue("Propulsion override", this.Power); }
+                foreach (IMyMotorSuspension w in propulsionDirection[false]) { w.SetValue("Propulsion override", -this.Power); }
             }
         }
     }
