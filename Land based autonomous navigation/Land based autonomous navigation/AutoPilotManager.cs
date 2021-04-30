@@ -122,27 +122,9 @@ namespace IngameScript
                     this.Objective = getCurrentObjective();
                     if (this.Objective != null)
                     {
-                        double destination = UpdatePosition();
-                        remotePilot.HandBrake = false;
-                        double tillCollision = -1;
+                        double destination = Move();
 
-                        if (remotePilot.GetValueBool("CollisionAvoidance") && state == PilotState.DRIVING)
-                        {
-                            double scanDistance = Math.Min(destination, maxScanDistance);
-                            tillCollision = collisionController.checkForCollisions(scanDistance);
-                        }
-                        if(tillCollision != -1)
-                        {// collision detected, reduce speed and steer right
-                            state = PilotState.AVOID;
-
-                            Vector3D targetPosition = Vector3D.TransformNormal(this.Position + Vector3D.Right * 10, MatrixD.Transpose(controlReference.WorldMatrix));
-                            addObjectiveFirst(targetPosition);
-                            uIManager.printOnScreens("service", "[SYS] Avoiding collision");
-                            return true;
-                        }
-                        Cruise(destination, remotePilot.SpeedLimit, RelativeTarget); // Apply Power 
-
-                        if(destination < precisionFactor)
+                        if (destination < precisionFactor)
                         {// target reached
                             if (state == PilotState.AVOID) state = PilotState.DRIVING;
                             bool hasAny = RemoveReachedObjective();
@@ -169,6 +151,30 @@ namespace IngameScript
                 return true;
             }
 
+            private double Move()
+            {
+                double destination = UpdatePosition();
+                remotePilot.HandBrake = false;
+                double tillCollision = -1;
+
+                if (remotePilot.GetValueBool("CollisionAvoidance") && state == PilotState.DRIVING)
+                {
+                    double scanDistance = Math.Min(destination, maxScanDistance);
+                    tillCollision = collisionController.checkForCollisions(scanDistance);
+                }
+                if (tillCollision != -1)
+                {// collision detected, reduce speed and steer right
+                    state = PilotState.AVOID;
+
+                    Vector3D targetPosition = Vector3D.Transform(new Vector3D(10, 0, 10), controlReference.WorldMatrix);
+                    addObjectiveFirst(targetPosition);
+                    uIManager.printOnScreens("service", "[SYS] Avoiding collision");
+                    return destination;
+                }
+                Cruise(destination, remotePilot.SpeedLimit, RelativeTarget); // Apply Power 
+                return destination;
+            }
+
             private void Cruise(double destination, float speed, Vector3D target)
             {
                 // Slow down on turns
@@ -176,11 +182,11 @@ namespace IngameScript
                 // Slow down when close to the targed
                 if (destination < 50) speed = speed * 0.5f;
                 // Slow down when avoiding collision
-                if (state == PilotState.AVOID) speed = speed * 0.3f;
+                if (state == PilotState.AVOID) speed = Math.Min(10, speed * 0.3f);
 
                 wheelController.SteeringDirection(target, RelativeVelocity, speed);
 
-                // TODO increase power when stuck! (and steer  wheels)
+                // TODO detect stuck and react! (increase power, move wheels, go back)
                 // Power calculation
                 wheelController.moveWheels(RelativeVelocity, speed, powerFactor);
             }
@@ -253,6 +259,7 @@ namespace IngameScript
                     remotePilot.AddWaypoint(wp);
                 }
                 remotePilot.SetAutoPilotEnabled(true);
+                Objective = position;
             }
 
             //--------------- Info ---------------
