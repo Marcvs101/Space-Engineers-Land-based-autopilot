@@ -24,10 +24,17 @@ namespace IngameScript
     {
         public class AutoPilotManager
         {
+            enum PilotState
+            {
+                DISABLED, DRIVING, AVOID
+            }
+
             public Vector3D? Objective { get; set; }
 
             float powerFactor;
             int precisionFactor;
+            int maxScanDistance;
+            PilotState state;
 
             public Vector3D Position { get; set; }
             public Vector3D RelativeVelocity { get; set; }
@@ -36,12 +43,13 @@ namespace IngameScript
             public IMyRemoteControl remotePilot;
             private IMyShipController controlReference;
             private WheelController wheelController;
+            private CollisionController collisionController;
             private UIManager uIManager;
 
             // Constructor
-            public AutoPilotManager(IMyGridTerminalSystem myGridTerminalSystem, UIManager uIManager, float powerFactor, int precisionFactor) {
+            public AutoPilotManager(IMyGridTerminalSystem myGridTerminalSystem, UIManager uIManager, float powerFactor, int precisionFactor, int scanDistance) {
                 List<IMyRemoteControl> controllers = new List<IMyRemoteControl>();
-                myGridTerminalSystem.GetBlocksOfType<IMyRemoteControl>(controllers);
+                myGridTerminalSystem.GetBlocksOfType(controllers);
 
                 foreach (IMyRemoteControl c in controllers)
                 {
@@ -51,7 +59,11 @@ namespace IngameScript
                 wheelController = new WheelController(myGridTerminalSystem, controlReference);
                 this.powerFactor = powerFactor;
                 this.precisionFactor = precisionFactor;
+                maxScanDistance = scanDistance;
+                state = PilotState.DRIVING;
                 this.uIManager = uIManager;
+                collisionController = new CollisionController(myGridTerminalSystem, remotePilot.GetValueBool("CollisionAvoidance"));
+                uIManager.printOnScreens("service", $"Found {collisionController.cameras.Count} cameras for collision detection.");
             }
 
             //--------------- Callback commands ---------------
@@ -106,15 +118,33 @@ namespace IngameScript
             {
                 if (remotePilot.IsAutoPilotEnabled)
                 {
+                    if (state == PilotState.DISABLED) state = PilotState.DRIVING;
                     this.Objective = getCurrentObjective();
                     if (this.Objective != null)
                     {
                         double destination = UpdatePosition();
                         remotePilot.HandBrake = false;
-                        // TODO check collision in front of.
-                        Cruise(destination); // Apply Power  
-                        if(destination < precisionFactor)
+                        double tillCollision = -1;
+
+                        if (remotePilot.GetValueBool("CollisionAvoidance") && state == PilotState.DRIVING)
                         {
+                            double scanDistance = Math.Min(destination, maxScanDistance);
+                            tillCollision = collisionController.checkForCollisions(scanDistance);
+                        }
+                        if(tillCollision != -1)
+                        {// collision detected, reduce speed and steer right
+                            state = PilotState.AVOID;
+
+                            Vector3D targetPosition = Vector3D.TransformNormal(this.Position + Vector3D.Right * 10, MatrixD.Transpose(controlReference.WorldMatrix));
+                            addObjectiveFirst(targetPosition);
+                            uIManager.printOnScreens("service", "[SYS] Avoiding collision");
+                            return true;
+                        }
+                        Cruise(destination, remotePilot.SpeedLimit, RelativeTarget); // Apply Power 
+
+                        if(destination < precisionFactor)
+                        {// target reached
+                            if (state == PilotState.AVOID) state = PilotState.DRIVING;
                             bool hasAny = RemoveReachedObjective();
                             if(!hasAny)
                             {
@@ -134,20 +164,21 @@ namespace IngameScript
                 else
                 {
                     wheelController.ReleaseWheels();
+                    state = PilotState.DISABLED;
                 }
                 return true;
             }
 
-            private void Cruise(double destination)
+            private void Cruise(double destination, float speed, Vector3D target)
             {
-                float speed = remotePilot.SpeedLimit;
-
                 // Slow down on turns
                 if (Math.Abs(wheelController.Steering) > .1f) speed = speed * ((1f - (Math.Abs(wheelController.Steering)) * .9f) + .1f);
                 // Slow down when close to the targed
                 if (destination < 50) speed = speed * 0.5f;
+                // Slow down when avoiding collision
+                if (state == PilotState.AVOID) speed = speed * 0.3f;
 
-                wheelController.SteeringDirection(RelativeTarget, RelativeVelocity, speed);
+                wheelController.SteeringDirection(target, RelativeVelocity, speed);
 
                 // TODO increase power when stuck! (and steer  wheels)
                 // Power calculation
@@ -211,15 +242,28 @@ namespace IngameScript
                 return route.Count > 0;
             }
 
+            private void addObjectiveFirst(Vector3D position)
+            {
+                List<MyWaypointInfo> route = new List<MyWaypointInfo>();
+                remotePilot.GetWaypointInfo(route);
+                route.Insert(0, (new MyWaypointInfo("AutoWaypoint", position)));
+                remotePilot.ClearWaypoints();
+                foreach (MyWaypointInfo wp in route)
+                {
+                    remotePilot.AddWaypoint(wp);
+                }
+                remotePilot.SetAutoPilotEnabled(true);
+            }
+
             //--------------- Info ---------------
 
             public string DisplayAutopilotInfo()
             {
-                string ret = "Autopilot Status\n";
+                string ret = "Autopilot Status";
 
                 if (remotePilot.IsAutoPilotEnabled)
                 {
-                    ret += "\nAutopilot enabled\n";
+                    ret += "\nAutopilot enabled";
 
                     if (Math.Abs(this.RelativeVelocity.Z - remotePilot.SpeedLimit) > 2)
                     {
@@ -234,8 +278,6 @@ namespace IngameScript
                         ret += "\nOn Cruise";
                     }
 
-                    ret += "\n";
-
                     ret += "\nDistance to waypoint: ";
                     ret += Math.Round((this.Objective.GetValueOrDefault() - this.Position).Length()).ToString() + " m";
 
@@ -245,9 +287,10 @@ namespace IngameScript
                     ret += "\nETA: ";
                     ret += Math.Round((this.Objective.GetValueOrDefault() - this.Position).Length() / this.RelativeVelocity.Z).ToString() + " s";
 
-                    ret += "\n";
-
-                    ret += "\nLatest warning: NOT DEFINED";
+                    if(state == PilotState.AVOID)
+                        ret += "\nState: Avoiding collision";
+                    else
+                        ret += "\nState: Normal";
                 }
                 else
                 {
