@@ -28,12 +28,20 @@ namespace IngameScript
             public float Power { get; set; }
             public float Steering { get; set; }
 
+            // Unused yet, these two will replace the power and steering calculations
+            private pidControllerData propulsionController;
+            private pidControllerData steeringController;
+
             private Dictionary<bool, List<IMyMotorSuspension>> propulsionDirection = new Dictionary<bool, List<IMyMotorSuspension>>();
             private Dictionary<bool, List<IMyMotorSuspension>> steeringDirection = new Dictionary<bool, List<IMyMotorSuspension>>();
             private List<IMyMotorSuspension> wheels = new List<IMyMotorSuspension>();
 
             public WheelController(IMyGridTerminalSystem myGridTerminalSystem, IMyShipController controlReference)
             {
+                // TODO tweak these values
+                propulsionController = new pidControllerData(.05, .01, .1);
+                steeringController = new pidControllerData(.05, .01, .1);
+
                 steeringDirection.Add(true, new List<IMyMotorSuspension>());
                 steeringDirection.Add(false, new List<IMyMotorSuspension>());
 
@@ -79,7 +87,19 @@ namespace IngameScript
             }
 
             public void SteeringDirection(Vector3D relativeTarget, Vector3D relativeVelocity, float speedLimit)
-            {// TODO do not calculate steering on every cycle
+            {
+                // TODO do not calculate steering on every cycle
+                // TODO switch to PID control
+                /*
+                double deltaTime = 0.0;
+                double heading_to_target = (double)(-Math.Atan2(relativeTarget.X, relativeTarget.Z));
+                double target = steeringController.doPidLoop(0,heading_to_target,deltaTime);
+                */
+                // The code above is still unused
+                // I still don't know how to factor in the speed of the vehicle to limit the turn rate
+                // The code below did it in a "meh, it works" way
+
+                // This calculation will be dismissed once PID is operative
                 this.Heading = (double)(-Math.Atan2(relativeTarget.X, relativeTarget.Z));
                 double target = this.Heading;
 
@@ -110,6 +130,14 @@ namespace IngameScript
 
             public void moveWheels(Vector3D RelativeVelocity, float speed, float powerFactor)
             {
+                // TODO switch to PID control
+                /*
+                double deltaTime = 0.1;
+                this.Power = (float) propulsionController.doPidLoop(speed, RelativeVelocity.Z, deltaTime);
+                */
+                // The code above is still unused
+
+                // This calculation will be dismissed once PID is operative
                 this.Power = (speed - ((float)RelativeVelocity.Z)) / powerFactor;
 
                 // Normalize in in -1:1 range
